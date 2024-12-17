@@ -1,3 +1,9 @@
+// Cố xử lý nốt lịch học 2 tuần nữa
+// 14/1/2025 - FPGA
+// 15/1/2025 - M1
+// 16/1/2025 - IoT
+// Maybe thứ 6, hoàn thành đatn nhanh nhất có thể
+
 #![no_std]
 #![no_main]
 use bleps::{
@@ -7,6 +13,7 @@ use bleps::{
     attribute_server::{AttributeServer, NotificationData, WorkResult},
     gatt, Ble, HciConnector,
 };
+use core::cell::RefCell;
 use display_interface_spi::SPIInterface;
 use embedded_graphics::{
     image::{Image, ImageRaw},
@@ -50,6 +57,8 @@ fn get_cell_position(row: usize, col: usize, cell_size: usize) -> Point {
 }
 #[entry]
 fn main() -> ! {
+    let mut connected = RefCell::new(false);
+
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default();
     let peripherals = esp_hal::init(config);
@@ -99,8 +108,6 @@ fn main() -> ! {
         .unwrap();
     display.clear(Rgb565::new(5, 12, 8)).unwrap();
     let cell_size = 10;
-    let rows = 240 / cell_size;
-    let cols = 240 / cell_size;
     let circle = Circle::new(Point::zero(), 240).into_styled(
         PrimitiveStyleBuilder::new()
             .stroke_color(Rgb565::new(5, 12, 8))
@@ -108,27 +115,36 @@ fn main() -> ! {
     );
     circle.draw(&mut display).unwrap();
 
-    let row = 15;
-    let col = 8;
-    let position = get_cell_position(row, col, cell_size);
-    let raw_image = ImageRaw::<Rgb565, BigEndian>::new(crate::asset::big::bien_90::test::DATA, 80);
-    let image = Image::new(&raw_image, position);
-    image.draw(&mut display).unwrap();
-
+    // let row = 15;
+    // let col = 8;
+    // let position = get_cell_position(row, col, cell_size);
+    // let raw_image = ImageRaw::<Rgb565, BigEndian>::new(crate::asset::big::bien_90::test::DATA, 80);
+    // let image = Image::new(&raw_image, position);
+    // image.draw(&mut display).unwrap();
 
     let row = 6;
     let col = 6;
     let position = get_cell_position(row, col, cell_size);
-    let raw_image = ImageRaw::<Rgb565, BigEndian>::new(crate::asset::small::bien_90::test::DATA, 50);
+    let raw_image =
+        ImageRaw::<Rgb565, BigEndian>::new(crate::asset::small::bien_90::test::DATA, 50);
     let image = Image::new(&raw_image, position);
     image.draw(&mut display).unwrap();
 
     let row = 6;
     let col = 13;
     let position = get_cell_position(row, col, cell_size);
-    let raw_image = ImageRaw::<Rgb565, BigEndian>::new(crate::asset::small::bien_90::test::DATA, 50);
+    let raw_image =
+        ImageRaw::<Rgb565, BigEndian>::new(crate::asset::small::bien_90::test::DATA, 50);
     let image = Image::new(&raw_image, position);
     image.draw(&mut display).unwrap();
+
+    Text::new(
+        "DISCONNECT",
+        Point::new(72, 190),
+        MonoTextStyle::new(&FONT_10X20, Rgb565::RED),
+    )
+    .draw(&mut display)
+    .unwrap();
 
     Text::new(
         "17:30",
@@ -228,7 +244,6 @@ fn main() -> ! {
     )
     .draw(&mut display)
     .unwrap();
-    let mut i: f32 = 0.0;
 
     // BLE
     let mut bluetooth = peripherals.BT;
@@ -253,110 +268,133 @@ fn main() -> ! {
         );
         println!("{:?}", ble.cmd_set_le_advertise_enable(true));
         println!("started advertising");
-        let mut rf = |_offset: usize, data: &mut [u8]| {
-            data[..20].copy_from_slice(&b"Hello Bare-Metal BLE"[..]);
-            17
-        };
-        let mut wf = |offset: usize, data: &[u8]| {
-            println!("RECEIVED: {} {:?}", offset, unsafe {
-                core::str::from_utf8_unchecked(data)
-            });
-        };
-        let mut wf2 = |offset: usize, data: &[u8]| {
-            println!("RECEIVED: {} {:?}", offset, unsafe {
-                core::str::from_utf8_unchecked(data)
-            });
-        };
+
         let mut rf3 = |_offset: usize, data: &mut [u8]| {
             data[..5].copy_from_slice(&b"Hola!"[..]);
             5
         };
         let mut wf3 = |offset: usize, data: &[u8]| {
             println!("RECEIVED: Offset {}, data {:?}", offset, data);
+            let str = core::str::from_utf8(data).unwrap();
+            if str == "connected" {
+                *connected.borrow_mut() = true;
+            }
         };
         gatt!([service {
             uuid: "937312e0-2354-11eb-9f10-fbc30a62cf38",
-            characteristics: [
-                characteristic {
-                    uuid: "937312e0-2354-11eb-9f10-fbc30a62cf38",
-                    read: rf,
-                    write: wf,
-                },
-                characteristic {
-                    uuid: "957312e0-2354-11eb-9f10-fbc30a62cf38",
-                    write: wf2,
-                },
-                characteristic {
-                    name: "my_characteristic",
-                    uuid: "987312e0-2354-11eb-9f10-fbc30a62cf38",
-                    notify: true,
-                    read: rf3,
-                    write: wf3,
-                },
-            ],
+            characteristics: [characteristic {
+                name: "my_characteristic",
+                uuid: "987312e0-2354-11eb-9f10-fbc30a62cf38",
+                notify: true,
+                read: rf3,
+                write: wf3,
+            },],
         },]);
+
         let mut rng = bleps::no_rng::NoRng;
         let mut srv = AttributeServer::new(&mut ble, &mut gatt_attributes, &mut rng);
+
+        let mut current_color = Rgb565::BLUE;
+        let mut i: f32 = 0.0;
         loop {
-            // LCD logic
-            let arc = Arc::new(Point::new(32, 30), 174, 135.0.deg(), i.deg()).into_styled(
-                PrimitiveStyleBuilder::new()
-                    .stroke_color(Rgb565::new(30, 15, 11))
-                    .stroke_width(17)
-                    .build(),
-            );
-            arc.draw(&mut display).unwrap();
-            i += 5.0;
-            delay.delay_millis(200);
-            if i == 270.0 {
-                i = 0.0;
-            } else {
-            }
-            let arc = Arc::new(
-                Point::new(32, 30),
-                174,
-                (135.0 + i).deg(),
-                270.0.deg() - i.deg(),
-            )
-            .into_styled(
-                PrimitiveStyleBuilder::new()
-                    .stroke_color(Rgb565::CSS_GRAY)
-                    .stroke_width(17)
-                    .build(),
-            );
-            arc.draw(&mut display).unwrap();
-            let mut notification = None;
-            if button.is_low() && debounce_cnt > 0 {
-                debounce_cnt -= 1;
-                if debounce_cnt == 0 {
-                    let mut cccd = [0u8; 1];
-                    if let Some(1) = srv.get_characteristic_value(
-                        my_characteristic_notify_enable_handle,
-                        0,
-                        &mut cccd,
-                    ) {
-                        if cccd[0] == 1 {
-                            notification = Some(NotificationData::new(
-                                my_characteristic_handle,
-                                &b"Notification"[..],
-                            ));
+            if *connected.borrow() == true {
+                // LCD logic
+                let arc = Arc::new(Point::new(32, 30), 174, 135.0.deg(), i.deg()).into_styled(
+                    PrimitiveStyleBuilder::new()
+                        .stroke_color(current_color)
+                        .stroke_width(17)
+                        .build(),
+                );
+                arc.draw(&mut display).unwrap();
+                i += 5.0;
+                delay.delay_millis(200);
+                if i == 270.0 {
+                    i = 0.0;
+                }
+
+                if i > 186.9 {
+                    current_color = Rgb565::new(30, 15, 11);
+                } else {
+                    current_color = Rgb565::BLUE;
+                }
+                let arc = Arc::new(
+                    Point::new(32, 30),
+                    174,
+                    (135.0 + i).deg(),
+                    270.0.deg() - i.deg(),
+                )
+                .into_styled(
+                    PrimitiveStyleBuilder::new()
+                        .stroke_color(Rgb565::CSS_GRAY)
+                        .stroke_width(17)
+                        .build(),
+                );
+                arc.draw(&mut display).unwrap();
+                let mut notification = None;
+                if button.is_low() && debounce_cnt > 0 {
+                    debounce_cnt -= 1;
+                    if debounce_cnt == 0 {
+                        let mut cccd = [0u8; 1];
+                        if let Some(1) = srv.get_characteristic_value(
+                            my_characteristic_notify_enable_handle,
+                            0,
+                            &mut cccd,
+                        ) {
+                            if cccd[0] == 1 {
+                                notification = Some(NotificationData::new(
+                                    my_characteristic_handle,
+                                    &b"Notification"[..],
+                                ));
+                            }
                         }
                     }
+                };
+                if button.is_high() {
+                    debounce_cnt = 500;
                 }
-            };
-            if button.is_high() {
-                debounce_cnt = 500;
-            }
-            match srv.do_work_with_notification(notification) {
-                Ok(res) => {
-                    if let WorkResult::GotDisconnected = res {
-                        break;
+                match srv.do_work_with_notification(notification) {
+                    Ok(res) => {
+                        if let WorkResult::GotDisconnected = res {
+                            *connected.borrow_mut() = false;
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        println!("{:?}", err);
                     }
                 }
-                Err(err) => {
-                    println!("{:?}", err);
+            } else {
+                i = 0.0;
+                let arc = Arc::new(
+                    Point::new(32, 30),
+                    174,
+                    (135.0 + i).deg(),
+                    270.0.deg() - i.deg(),
+                )
+                .into_styled(
+                    PrimitiveStyleBuilder::new()
+                        .stroke_color(Rgb565::CSS_GRAY)
+                        .stroke_width(17)
+                        .build(),
+                );
+                arc.draw(&mut display).unwrap();
+                let notification = None;
+                match srv.do_work_with_notification(notification) {
+                    Ok(res) => {
+                        if let WorkResult::GotDisconnected = res {
+                            *connected.borrow_mut() = false;
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        println!("{:?}", err);
+                    }
                 }
             }
         }
     }
 }
+
+// Not phần app
+// 1 - app phải auto connect (app đảm nhiệm )
+// 2 - sau khi connect thành công, app gửi bản tin
