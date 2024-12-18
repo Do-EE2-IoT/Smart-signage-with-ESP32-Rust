@@ -4,8 +4,12 @@
 // 16/1/2025 - IoT
 // Maybe thứ 6, hoàn thành đatn nhanh nhất có thể
 
+
+
+//export LIBCLANG_PATH="/home/do30032003/.rustup/toolchains/esp/xtensa-esp32-elf-clang/esp-18.1.2_20240912/esp-clang/lib"
 #![no_std]
 #![no_main]
+use asset::big::bien_90;
 use bleps::{
     ad_structure::{
         create_advertising_data, AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE,
@@ -15,6 +19,7 @@ use bleps::{
 };
 use core::cell::RefCell;
 use display_interface_spi::SPIInterface;
+use embassy_executor::Spawner;
 use embedded_graphics::{
     image::{Image, ImageRaw},
     mono_font::{
@@ -55,9 +60,10 @@ fn get_cell_position(row: usize, col: usize, cell_size: usize) -> Point {
     let y = (row * cell_size) as i32;
     Point::new(x, y)
 }
-#[entry]
-fn main() -> ! {
-    let mut connected = RefCell::new(false);
+#[esp_hal_embassy::main]
+async fn main(_spawner: Spawner) -> ! {
+    let connected = RefCell::new(false);
+    let bien_90 = RefCell::new(false);
 
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default();
@@ -71,6 +77,7 @@ fn main() -> ! {
         peripherals.RADIO_CLK,
     )
     .unwrap();
+    esp_hal_embassy::init(timg0.timer1);
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
     let button = Input::new(io.pins.gpio0, Pull::Down);
     let mut debounce_cnt = 500;
@@ -113,14 +120,8 @@ fn main() -> ! {
             .stroke_color(Rgb565::new(5, 12, 8))
             .build(),
     );
+    
     circle.draw(&mut display).unwrap();
-
-    // let row = 15;
-    // let col = 8;
-    // let position = get_cell_position(row, col, cell_size);
-    // let raw_image = ImageRaw::<Rgb565, BigEndian>::new(crate::asset::big::bien_90::test::DATA, 80);
-    // let image = Image::new(&raw_image, position);
-    // image.draw(&mut display).unwrap();
 
     let row = 6;
     let col = 6;
@@ -278,6 +279,8 @@ fn main() -> ! {
             let str = core::str::from_utf8(data).unwrap();
             if str == "connected" {
                 *connected.borrow_mut() = true;
+            } else if str == "90" {
+                *bien_90.borrow_mut() = true;
             }
         };
         gatt!([service {
@@ -297,7 +300,19 @@ fn main() -> ! {
         let mut current_color = Rgb565::BLUE;
         let mut i: f32 = 0.0;
         loop {
-            if *connected.borrow() == true {
+            if *connected.borrow() {
+                if *bien_90.borrow() {
+                    let row = 15;
+                    let col = 8;
+                    let position = get_cell_position(row, col, cell_size);
+                    let raw_image = ImageRaw::<Rgb565, BigEndian>::new(
+                        crate::asset::big::bien_90::test::DATA,
+                        80,
+                    );
+                    let image = Image::new(&raw_image, position);
+                    image.draw(&mut display).unwrap();
+                    *bien_90.borrow_mut() = false;
+                }
                 // LCD logic
                 let arc = Arc::new(Point::new(32, 30), 174, 135.0.deg(), i.deg()).into_styled(
                     PrimitiveStyleBuilder::new()
@@ -378,6 +393,13 @@ fn main() -> ! {
                         .build(),
                 );
                 arc.draw(&mut display).unwrap();
+                Text::new(
+                    "DISCONNECT",
+                    Point::new(72, 190),
+                    MonoTextStyle::new(&FONT_10X20, Rgb565::RED),
+                )
+                .draw(&mut display)
+                .unwrap();
                 let notification = None;
                 match srv.do_work_with_notification(notification) {
                     Ok(res) => {

@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["ducanhkhuong <duca3774@gmail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-[dependencies]
+[dependencies]   
 esp-backtrace = { version = "0.14.2", features = [
     "esp32",
     "exception-handler",
@@ -46,7 +46,6 @@ smoltcp = { version = "0.11.0", default-features = false, features = [
     "socket-tcp",
     "socket-udp",
 ] }
-
 mipidsi = { git = "https://github.com/almindor/mipidsi.git", branch = "master" }
 embedded-graphics = "0.8.0"
 display-interface = "0.5"
@@ -55,6 +54,11 @@ embedded-hal-bus = "0.2.0"
 profont = "0.2"
 embedded-graphics-core = "0.4"
 embassy-sync = "0.6.0"
+lvgl = { version = "0.6.2", default-features = false, features = [
+    "embedded_graphics",
+    "unsafe_no_autoinit",
+] }
+
 
 [profile.dev]
 # Rust debug is too slow.
@@ -66,5 +70,8 @@ debug = 2
 debug-assertions = false
 incremental = false
 lto = 'fat'
-opt-level = 's'
+opt-level = 'z'
 overflow-checks = false
+
+[patch.crates-io]
+lvgl = { git = "https://github.com/enelson1001/lv_binding_rust" }
