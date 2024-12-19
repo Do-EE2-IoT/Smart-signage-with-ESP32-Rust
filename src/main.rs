@@ -4,8 +4,6 @@
 // 16/1/2025 - IoT
 // Maybe thứ 6, hoàn thành đatn nhanh nhất có thể
 
-
-
 //export LIBCLANG_PATH="/home/do30032003/.rustup/toolchains/esp/xtensa-esp32-elf-clang/esp-18.1.2_20240912/esp-clang/lib"
 #![no_std]
 #![no_main]
@@ -15,7 +13,8 @@ use bleps::{
         create_advertising_data, AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE,
     },
     attribute_server::{AttributeServer, NotificationData, WorkResult},
-    gatt, Ble, HciConnector,
+    event::EventType,
+    gatt, Ble, HciConnector, PollResult,
 };
 use core::cell::RefCell;
 use display_interface_spi::SPIInterface;
@@ -120,7 +119,7 @@ async fn main(_spawner: Spawner) -> ! {
             .stroke_color(Rgb565::new(5, 12, 8))
             .build(),
     );
-    
+
     circle.draw(&mut display).unwrap();
 
     let row = 6;
@@ -277,6 +276,7 @@ async fn main(_spawner: Spawner) -> ! {
         let mut wf3 = |offset: usize, data: &[u8]| {
             println!("RECEIVED: Offset {}, data {:?}", offset, data);
             let str = core::str::from_utf8(data).unwrap();
+            println!("{}", str);
             if str == "connected" {
                 *connected.borrow_mut() = true;
             } else if str == "90" {
@@ -299,6 +299,32 @@ async fn main(_spawner: Spawner) -> ! {
 
         let mut current_color = Rgb565::BLUE;
         let mut i: f32 = 0.0;
+        loop {
+            let poll_result = srv.ble.poll();
+            let result = match poll_result {
+                Some(result) => result,
+                None => PollResult::Event(EventType::Unknown),
+            };
+            match result {
+                PollResult::Event(event_type) => match event_type {
+                    EventType::ConnectionComplete {
+                        status,
+                        handle,
+                        role,
+                        peer_address,
+                        interval,
+                        latency,
+                        timeout,
+                    } => {
+                        println!("Peer {:?} connected to this node", peer_address);
+                        *connected.borrow_mut() = true;
+                        break;
+                    }
+                    _ => {}
+                },
+                PollResult::AsyncData(async_data) => {}
+            }
+        }
         loop {
             if *connected.borrow() {
                 if *bien_90.borrow() {
