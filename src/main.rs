@@ -78,7 +78,7 @@ async fn main(_spawner: Spawner) -> ! {
     .unwrap();
     esp_hal_embassy::init(timg0.timer1);
     let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
-    let button = Input::new(io.pins.gpio0, Pull::Down);
+    let button = Input::new(io.pins.gpio19, Pull::Up);
     let mut debounce_cnt = 500;
     let mut delay = Delay::new();
 
@@ -372,23 +372,11 @@ async fn main(_spawner: Spawner) -> ! {
                 );
                 arc.draw(&mut display).unwrap();
                 let mut notification = None;
-                if button.is_low() && debounce_cnt > 0 {
-                    debounce_cnt -= 1;
-                    if debounce_cnt == 0 {
-                        let mut cccd = [0u8; 1];
-                        if let Some(1) = srv.get_characteristic_value(
-                            my_characteristic_notify_enable_handle,
-                            0,
-                            &mut cccd,
-                        ) {
-                            if cccd[0] == 1 {
-                                notification = Some(NotificationData::new(
-                                    my_characteristic_handle,
-                                    &b"Notification"[..],
-                                ));
-                            }
-                        }
-                    }
+                if button.is_low() {
+                    notification = Some(NotificationData::new(
+                        my_characteristic_handle,
+                        &b"Notification"[..],
+                    ));
                 };
                 if button.is_high() {
                     debounce_cnt = 500;
